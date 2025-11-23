@@ -1,0 +1,8 @@
+{
+  "appId": "com.example.aiexpensetracker",
+  "appName": "AI Expense Tracker",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
