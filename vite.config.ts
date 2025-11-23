@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -12,8 +13,21 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'index.html'),
+          // Explicitly build the service worker so it ends up in dist/service-worker.js
+          'service-worker': resolve(__dirname, 'service-worker.js'),
+        },
+        output: {
+          entryFileNames: (assetInfo) => {
+            if (assetInfo.name === 'service-worker') {
+              return 'service-worker.js';
+            }
+            return 'assets/[name]-[hash].js';
+          },
+        },
+      },
     },
-    // Explicitly include the service worker and manifest in the build
-    publicDir: false, // We will manually handle assets since we have a flat structure
   };
 });
