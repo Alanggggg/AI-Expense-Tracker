@@ -1,39 +1,37 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { TransactionCategory, TransactionType } from "../types";
 
-// Initialize the client
-// Note: In a real production app, this key should be proxied or handled securely.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export interface ParsedTransactionData {
   amount: number;
-  category: TransactionCategory;
+  category: string;
   note: string;
   date: string;
   type: TransactionType;
 }
 
-export const parseTransactionWithGemini = async (input: string): Promise<ParsedTransactionData> => {
+export const parseTransactionWithGemini = async (input: string, existingCategories: string[]): Promise<ParsedTransactionData> => {
   const now = new Date();
+  const categoriesList = existingCategories.join(', ');
+  
   const systemInstruction = `
-    You are an intelligent financial assistant. Your job is to parse natural language text (in English, Chinese, or other languages) into a structured transaction object.
+    You are an intelligent financial assistant. Your job is to parse natural language text into a structured transaction object.
     
     Current Date: ${now.toISOString()}
+    Existing Categories: ${categoriesList}
     
     Rules:
-    1. Analyze the user's input to extract the amount, category, note, date, and transaction type.
-    2. If the currency is not specified, assume it is the user's local currency (extract only the number).
-    3. Map the category to one of these exactly based on the meaning:
-       - 'Food' (e.g., lunch, dinner, groceries, 吃饭, 咖啡, 超市)
-       - 'Transport' (e.g., taxi, bus, gas, flight, 打车, 地铁, 加油)
-       - 'Shopping' (e.g., clothes, electronics, gadgets, 买衣服, 购物)
-       - 'Entertainment' (e.g., movies, games, party, 电影, 游戏, 娱乐)
-       - 'Housing' (e.g., rent, utilities, furniture, 房租, 水电费)
-       - 'Others' (general or unknown)
-    4. If the category is ambiguous, default to 'Others'.
-    5. If the date is not specified (e.g. "spent 50 on lunch"), use the Current Date provided above.
-    6. If the text implies earning money (e.g. "salary", "bonus", "sold item", 工资, 奖金, 卖二手), set type to 'Income'. Otherwise 'Expense'.
-    7. Keep the 'note' concise and in the same language as the input if possible.
+    1. Extract amount, category, note, date, and transaction type.
+    2. CATEGORY MATCHING (Important): 
+       - First, try to fit the transaction into one of the 'Existing Categories' listed above if the meaning matches closely.
+       - If the transaction represents a CLEARLY different concept that doesn't fit any existing category, CREATE A NEW CATEGORY name.
+       - New category names should be short (1-2 words), Capitalized (e.g., "Pets", "Education", "Travel"), and in English.
+    3. If currency is not specified, assume local currency (extract number only).
+    4. If date is not specified, use Current Date.
+    5. Type: 'Income' for earnings (salary, bonus), 'Expense' for spending.
+    6. Keep 'note' concise.
   `;
 
   try {
@@ -46,18 +44,17 @@ export const parseTransactionWithGemini = async (input: string): Promise<ParsedT
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            amount: { type: Type.NUMBER, description: "The numeric value of the transaction." },
+            amount: { type: Type.NUMBER, description: "The numeric value." },
             category: { 
               type: Type.STRING, 
-              enum: Object.values(TransactionCategory),
-              description: "The category of the transaction." 
+              description: "The category name. Use an existing one or create a new short name." 
             },
-            note: { type: Type.STRING, description: "A short description of the transaction." },
-            date: { type: Type.STRING, description: "ISO 8601 date string of when the transaction occurred." },
+            note: { type: Type.STRING, description: "Short description." },
+            date: { type: Type.STRING, description: "ISO 8601 date string." },
             type: { 
               type: Type.STRING, 
               enum: Object.values(TransactionType),
-              description: "Whether this is an Expense or Income." 
+              description: "Expense or Income." 
             }
           },
           required: ["amount", "category", "note", "date", "type"],

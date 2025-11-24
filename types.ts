@@ -1,11 +1,5 @@
-export enum TransactionCategory {
-  Food = 'Food',
-  Transport = 'Transport',
-  Shopping = 'Shopping',
-  Entertainment = 'Entertainment',
-  Housing = 'Housing',
-  Others = 'Others'
-}
+
+export type TransactionCategory = string;
 
 export enum TransactionType {
   Expense = 'Expense',
@@ -25,4 +19,11 @@ export interface ExpenseSummary {
   totalExpense: number;
   totalIncome: number;
   balance: number;
+}
+
+export interface CategoryStyle {
+  colorClass: string;
+  isCustom: boolean;
+  // We don't store the icon component itself in state/storage, 
+  // we'll handle icons logic in the UI layer
 }

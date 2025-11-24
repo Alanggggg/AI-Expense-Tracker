@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { useExpenses } from '../context/ExpenseContext';
 import { parseTransactionWithGemini } from '../services/geminiService';
-import { ArrowUp, Loader2, Sparkles, Mic, MicOff } from 'lucide-react';
+import { ArrowUp, Loader2, Sparkles, Mic } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const SUGGESTIONS = [
   "☕️ 咖啡 25",
   "🚕 打车 30",
   "💰 发工资 8000",
-  "🥗 午饭 30元"
+  "🐱 猫粮 200"
 ];
 
 // Type definition for Web Speech API
@@ -21,29 +22,36 @@ declare global {
 
 const SmartInput: React.FC = () => {
   const [input, setInput] = useState('');
-  const { addTransaction, isLoading, setIsLoading } = useExpenses();
+  const { addTransaction, isLoading, setIsLoading, availableCategories } = useExpenses();
   const [error, setError] = useState<string | null>(null);
   
   // Voice Input State
   const [isListening, setIsListening] = useState(false);
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-      setIsSpeechSupported(true);
-    }
-  }, []);
-
-  const startListening = () => {
-    if (isLoading) return;
-    
+    // 1. Check browser support
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
+    setIsSpeechSupported(true);
+
+    // 2. iOS Permission Fix: Explicitly request getUserMedia on mount.
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        stream.getTracks().forEach(track => track.stop());
+        console.log("Microphone permission primed for iOS");
+      })
+      .catch((err) => {
+        console.log("Microphone permission not pre-granted", err);
+      });
+
+    // 3. Initialize SpeechRecognition Instance ONCE
     const recognition = new SpeechRecognition();
-    recognition.lang = 'zh-CN'; // Default to Chinese for this user context
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.lang = 'zh-CN'; 
+    recognition.continuous = true; 
+    recognition.interimResults = true; 
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -55,19 +63,49 @@ const SmartInput: React.FC = () => {
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      // Append to existing text or replace? Usually replace for short commands, 
-      // but let's append if there's a trailing space, otherwise replace.
-      setInput(transcript);
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          finalTranscript += event.results[i][0].transcript;
+        }
+      }
+      setInput(finalTranscript);
     };
 
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error", event.error);
       setIsListening(false);
-      setError("无法识别语音，请重试");
+      if (event.error !== 'aborted' && event.error !== 'not-allowed') {
+        setError("无法识别");
+      }
     };
 
-    recognition.start();
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const startListening = (e: React.TouchEvent | React.MouseEvent) => {
+    if (isLoading) return;
+    if (!recognitionRef.current) return;
+
+    try {
+      recognitionRef.current.start();
+    } catch (err) {
+      console.log("Speech recognition already started or failed to start", err);
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,7 +116,8 @@ const SmartInput: React.FC = () => {
     setError(null);
 
     try {
-      const data = await parseTransactionWithGemini(input);
+      // Pass existing categories to help Gemini decide whether to reuse or create new
+      const data = await parseTransactionWithGemini(input, availableCategories);
       
       addTransaction({
         id: uuidv4(),
@@ -98,21 +137,19 @@ const SmartInput: React.FC = () => {
   };
 
   return (
-    // Updated padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))
-    // This ensures the input bar is pushed up above the iPhone Home Indicator
-    <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 z-50 px-4 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-      <div className="max-w-md mx-auto relative">
+    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 z-50 px-4 pt-3 pb-[calc(1.0rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.03)] h-auto">
+      <div className="max-w-md mx-auto relative flex flex-col gap-3">
         {error && (
-          <div className="absolute -top-12 left-0 right-0 text-center">
-            <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs border border-red-100 shadow-sm">
+          <div className="absolute -top-14 left-0 right-0 text-center">
+            <span className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs border border-red-100 shadow-sm animate-fade-in-up">
               {error}
             </span>
           </div>
         )}
 
-        {/* Suggestion Chips - Only show when not listening and empty */}
+        {/* Suggestion Chips */}
         {!input.trim() && !isLoading && !isListening && (
-          <div className="flex gap-2 overflow-x-auto pb-3 px-1 no-scrollbar mask-linear-fade">
+          <div className="flex gap-2 overflow-x-auto pb-1 px-1 no-scrollbar mask-linear-fade">
             {SUGGESTIONS.map(s => (
               <button
                 key={s}
@@ -125,60 +162,64 @@ const SmartInput: React.FC = () => {
           </div>
         )}
         
-        <form onSubmit={handleSubmit} className="relative flex items-center">
-          {/* Left Icon (Visual only) */}
-          <div className="absolute left-3 text-blue-500 pointer-events-none">
-            <Sparkles size={18} />
-          </div>
-          
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={isListening ? "正在听..." : "试着说：刚才打车花了30元..."}
-            className={`w-full pl-10 pr-24 py-3.5 rounded-full text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 transition-all ${
-              isListening 
-                ? 'bg-red-50 ring-2 ring-red-500/30 placeholder-red-400' 
-                : 'bg-gray-100 focus:ring-blue-500/50'
-            }`}
-            disabled={isLoading || isListening}
-          />
-
-          <div className="absolute right-2 flex items-center gap-1">
-            {/* Mic Button */}
-            {isSpeechSupported && (
-               <button
-               type="button"
-               onClick={startListening}
-               disabled={isLoading || isListening}
-               className={`p-2 rounded-full transition-all duration-200 ${
-                 isListening 
-                   ? 'text-red-600 bg-red-100 animate-pulse' 
-                   : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
-               }`}
-             >
-               {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-             </button>
-            )}
-
-            {/* Send Button */}
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading || isListening}
-              className={`p-2 rounded-full transition-all duration-200 ${
-                input.trim() && !isLoading && !isListening
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+        {/* Input Area + Mic Button Layout - Explicit height container */}
+        <div className="flex items-center gap-3 h-14">
+          {/* Text Input Form - Fill height */}
+          <form onSubmit={handleSubmit} className="relative flex-1 h-full flex items-center m-0">
+            <div className="absolute left-3 text-blue-500 pointer-events-none">
+              <Sparkles size={18} />
+            </div>
+            
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={isListening ? "正在聆听..." : "输入消费，或按住说话..."}
+              className={`w-full pl-10 pr-12 h-full rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
+                isListening 
+                  ? 'bg-blue-50/50 ring-2 ring-blue-500/20' 
+                  : 'bg-gray-100 border border-transparent focus:bg-white focus:border-blue-200'
               }`}
+              disabled={isLoading || isListening}
+            />
+
+            {/* Send Button (Inside Input) - Only visible when typing/has text */}
+            <div className={`absolute right-2 transition-all duration-200 transform ${input.trim() ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'}`}>
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading || isListening}
+                className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
+              >
+                {isLoading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <ArrowUp size={18} strokeWidth={3} />
+                )}
+              </button>
+            </div>
+          </form>
+
+          {/* Big Push-to-Talk Mic Button - Fill height */}
+          {isSpeechSupported && (
+            <button
+              type="button"
+              onTouchStart={startListening}
+              onTouchEnd={stopListening}
+              onMouseDown={startListening}
+              onMouseUp={stopListening}
+              onMouseLeave={stopListening} // Handle dragging out
+              disabled={isLoading}
+              className={`flex-shrink-0 w-14 h-full rounded-2xl flex items-center justify-center transition-all duration-200 select-none touch-none ${
+                isListening 
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-300 scale-110' 
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 active:scale-95'
+              }`}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              {isLoading ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <ArrowUp size={18} strokeWidth={3} />
-              )}
+              <Mic size={26} className={isListening ? 'animate-pulse' : ''} />
             </button>
-          </div>
-        </form>
+          )}
+        </div>
       </div>
     </div>
   );

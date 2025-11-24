@@ -15,11 +15,11 @@ const copyStaticFiles = () => ({
     ];
 
     filesToCopy.forEach(file => {
-      const src = resolve(__dirname, file);
-      const dest = resolve(__dirname, 'dist', file);
+      const src = resolve(file);
+      const dest = resolve('dist', file);
       // Ensure dist exists
-      if (!fs.existsSync(resolve(__dirname, 'dist'))) {
-        fs.mkdirSync(resolve(__dirname, 'dist'));
+      if (!fs.existsSync(resolve('dist'))) {
+        fs.mkdirSync(resolve('dist'));
       }
       
       if (fs.existsSync(src)) {
@@ -33,7 +33,7 @@ const copyStaticFiles = () => ({
 });
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), copyStaticFiles()],
     define: {
@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       rollupOptions: {
         input: {
-          main: resolve(__dirname, 'index.html'),
+          main: resolve('index.html'),
         },
         // We removed service-worker from rollup inputs because we are copying it manually
         // to avoid hashing its filename (e.g. service-worker-123.js) which breaks registration
