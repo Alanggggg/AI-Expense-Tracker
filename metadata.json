@@ -2,6 +2,7 @@
   "name": "AI Expense Tracker",
   "description": "A minimalist, AI-powered expense tracker. Just type what you spent, and let Gemini handle the categorization and data entry.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

@@ -65,13 +65,12 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [transactions]);
 
   useEffect(() => {
-    // Only save custom categories to avoid bloat, but for simplicity saving all is fine
-    // Filter out defaults if we wanted to be strict, but saving all ensures consistency
     localStorage.setItem('categoryStyles', JSON.stringify(categoryStyles));
   }, [categoryStyles]);
 
   const registerCategory = useCallback((categoryName: string) => {
     setCategoryStyles(prev => {
+      // Direct check for exact match
       if (prev[categoryName]) return prev;
 
       // Pick a random color for the new category
@@ -87,19 +86,41 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
+  // Helper: Find existing category ignoring case, or format new one as Title Case
+  const normalizeCategory = useCallback((name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return "Others";
+
+    // 1. Check if it matches an existing category (case-insensitive)
+    const existingKey = Object.keys(categoryStyles).find(
+      k => k.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existingKey) return existingKey;
+
+    // 2. If new, format as Title Case (e.g., "food" -> "Food")
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+  }, [categoryStyles]);
+
   const addTransaction = useCallback((transaction: Transaction) => {
-    // Ensure category is registered
-    registerCategory(transaction.category);
+    // Normalize category before processing
+    const cleanCategory = normalizeCategory(transaction.category);
+    const finalTransaction = { ...transaction, category: cleanCategory };
+
+    // Ensure category is registered (with the clean name)
+    registerCategory(cleanCategory);
     
-    setTransactions(prev => [transaction, ...prev]);
-  }, [registerCategory]);
+    setTransactions(prev => [finalTransaction, ...prev]);
+  }, [registerCategory, normalizeCategory]);
 
   const updateTransaction = useCallback((updatedTransaction: Transaction) => {
-    // Ensure category is registered (in case it was changed to a new one)
-    registerCategory(updatedTransaction.category);
+    // Normalize category before processing
+    const cleanCategory = normalizeCategory(updatedTransaction.category);
+    const finalTransaction = { ...updatedTransaction, category: cleanCategory };
+
+    registerCategory(cleanCategory);
     
-    setTransactions(prev => prev.map(t => t.id === updatedTransaction.id ? updatedTransaction : t));
-  }, [registerCategory]);
+    setTransactions(prev => prev.map(t => t.id === finalTransaction.id ? finalTransaction : t));
+  }, [registerCategory, normalizeCategory]);
 
   const deleteTransaction = useCallback((id: string) => {
     setTransactions(prev => prev.filter(t => t.id !== id));

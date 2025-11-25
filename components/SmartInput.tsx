@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useExpenses } from '../context/ExpenseContext';
-import { parseTransactionWithGemini } from '../services/geminiService';
-import { ArrowUp, Loader2, Sparkles, Mic } from 'lucide-react';
+import { parseTransactionWithGemini, parseImageTransactionWithGemini } from '../services/geminiService';
+import { ArrowUp, Loader2, Sparkles, Mic, Camera } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 const SUGGESTIONS = [
@@ -24,6 +23,7 @@ const SmartInput: React.FC = () => {
   const [input, setInput] = useState('');
   const { addTransaction, isLoading, setIsLoading, availableCategories } = useExpenses();
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Voice Input State
   const [isListening, setIsListening] = useState(false);
@@ -136,6 +136,52 @@ const SmartInput: React.FC = () => {
     }
   };
 
+  // Helper to convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the Data-URI prefix (e.g. "data:image/jpeg;base64,") to get just the base64 string
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input so same file can be selected again if needed
+    e.target.value = '';
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const base64 = await fileToBase64(file);
+      const data = await parseImageTransactionWithGemini(base64, file.type, availableCategories);
+      
+      addTransaction({
+        id: uuidv4(),
+        amount: data.amount,
+        category: data.category,
+        note: data.note,
+        date: data.date,
+        type: data.type
+      });
+      
+    } catch (err) {
+      console.error(err);
+      setError("图片识别失败");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-100 z-50 px-4 pt-3 pb-[calc(1.0rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.03)] h-auto">
       <div className="max-w-md mx-auto relative flex flex-col gap-3">
@@ -162,8 +208,32 @@ const SmartInput: React.FC = () => {
           </div>
         )}
         
-        {/* Input Area + Mic Button Layout - Explicit height container */}
+        {/* Input Area + Buttons Layout */}
         <div className="flex items-center gap-3 h-14">
+          
+          {/* Camera Button */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImageUpload} 
+            accept="image/*" 
+            className="hidden" 
+            capture="environment"
+          />
+          <button
+            type="button"
+            onClick={() => !isLoading && fileInputRef.current?.click()}
+            disabled={isLoading || isListening}
+            className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 ${
+              isLoading 
+              ? 'bg-gray-50 text-gray-300' 
+              : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 active:scale-95'
+            }`}
+            title="Scan Receipt"
+          >
+            <Camera size={22} />
+          </button>
+
           {/* Text Input Form - Fill height */}
           <form onSubmit={handleSubmit} className="relative flex-1 h-full flex items-center m-0">
             <div className="absolute left-3 text-blue-500 pointer-events-none">
@@ -174,7 +244,7 @@ const SmartInput: React.FC = () => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isListening ? "正在聆听..." : "输入消费，或按住说话..."}
+              placeholder={isListening ? "正在聆听..." : isLoading ? "AI 正在分析..." : "输入消费..."}
               className={`w-full pl-10 pr-12 h-full rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
                 isListening 
                   ? 'bg-blue-50/50 ring-2 ring-blue-500/20' 

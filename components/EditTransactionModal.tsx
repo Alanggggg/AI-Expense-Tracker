@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Transaction, TransactionType } from '../types';
-import { X, Save, Trash2 } from 'lucide-react';
+import { X, Save, Trash2, ChevronDown, Check, Plus } from 'lucide-react';
 import { useExpenses } from '../context/ExpenseContext';
 
 interface EditTransactionModalProps {
@@ -18,6 +18,11 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
   const [note, setNote] = useState('');
   const [date, setDate] = useState('');
   const [type, setType] = useState<TransactionType>(TransactionType.Expense);
+
+  // Combobox State
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false); // Control strict filtering
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (transaction) {
@@ -38,6 +43,17 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
     }
   }, [transaction]);
 
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (!isOpen || !transaction) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,7 +66,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
     updateTransaction({
       ...transaction,
       amount: numAmount, 
-      category,
+      category: category.trim(), // Ensure clean string
       note,
       date: new Date(date).toISOString(),
       type
@@ -65,9 +81,17 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
     }
   };
 
+  // Filter logic: If showAllCategories is true (user clicked arrow), show everything.
+  // Otherwise, filter based on input text.
+  const filteredCategories = showAllCategories 
+    ? availableCategories 
+    : availableCategories.filter(c => c.toLowerCase().includes(category.toLowerCase()));
+
+  const isExactMatch = availableCategories.some(c => c.toLowerCase() === category.toLowerCase());
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4 animate-in fade-in duration-200">
-      {/* Click outside to close */}
+      {/* Click outside to close modal */}
       <div className="absolute inset-0" onClick={onClose}></div>
 
       <div className="relative bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200">
@@ -81,7 +105,7 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
           <form id="edit-form" onSubmit={handleSubmit} className="space-y-5">
             
             {/* Type Toggle */}
@@ -127,25 +151,82 @@ const EditTransactionModal: React.FC<EditTransactionModalProps> = ({ transaction
               </div>
             </div>
 
-            {/* Category */}
-            <div>
+            {/* Category Custom Combobox */}
+            <div className="relative" ref={dropdownRef}>
               <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
               <div className="relative">
                  <input
                   type="text"
-                  list="categories"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  placeholder="e.g. Food"
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setShowAllCategories(false); // Reset to filter mode when typing
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={(e) => {
+                    setShowSuggestions(true);
+                    e.target.select(); // UX: Select all text so typing replaces it instantly
+                  }}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all pr-10"
+                  placeholder="Select or type new..."
                   required
+                  autoComplete="off"
                 />
-                <datalist id="categories">
-                  {availableCategories.map(c => (
-                    <option key={c} value={c} />
-                  ))}
-                </datalist>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const willOpen = !showSuggestions;
+                    setShowSuggestions(willOpen);
+                    if (willOpen) {
+                      setShowAllCategories(true); // Explicitly show all when clicking chevron
+                    }
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+                >
+                  <ChevronDown size={16} className={`transition-transform duration-200 ${showSuggestions ? 'rotate-180' : ''}`} />
+                </button>
               </div>
+
+              {/* Dropdown Menu */}
+              {showSuggestions && (
+                <div className="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                  {filteredCategories.length > 0 ? (
+                    filteredCategories.map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => {
+                          setCategory(c);
+                          setShowSuggestions(false);
+                          setShowAllCategories(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center justify-between group transition-colors"
+                      >
+                        <span className="text-gray-700 font-medium">{c}</span>
+                        {category === c && <Check size={16} className="text-blue-500" />}
+                      </button>
+                    ))
+                  ) : null}
+                  
+                  {/* Create New Option - Show if the user typed something that isn't an exact match */}
+                  {category.trim() && !isExactMatch && !showAllCategories && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSuggestions(false)}
+                      className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center gap-2 text-blue-600 border-t border-gray-50"
+                    >
+                      <Plus size={16} />
+                      <span className="font-semibold">Create "{category}"</span>
+                    </button>
+                  )}
+                  
+                  {filteredCategories.length === 0 && !category.trim() && (
+                    <div className="px-4 py-3 text-sm text-gray-400 text-center">
+                      Type to create a new category
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Date */}

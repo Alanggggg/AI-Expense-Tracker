@@ -40,14 +40,18 @@ export default defineConfig(({ mode }) => {
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
       'process.env': {} 
     },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: './src/test/setup.ts',
+      css: false,
+    },
     build: {
       outDir: 'dist',
       rollupOptions: {
         input: {
           main: resolve('index.html'),
         },
-        // We removed service-worker from rollup inputs because we are copying it manually
-        // to avoid hashing its filename (e.g. service-worker-123.js) which breaks registration
       },
     },
   };

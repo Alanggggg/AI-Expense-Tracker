@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { TransactionCategory, TransactionType } from "../types";
 
@@ -12,53 +11,51 @@ export interface ParsedTransactionData {
   type: TransactionType;
 }
 
+const COMMON_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    amount: { type: Type.NUMBER, description: "Value" },
+    category: { 
+      type: Type.STRING, 
+      description: "Category name" 
+    },
+    note: { type: Type.STRING, description: "Merchant name or item description" },
+    date: { type: Type.STRING, description: "ISO date" },
+    type: { 
+      type: Type.STRING, 
+      enum: Object.values(TransactionType),
+      description: "Type" 
+    }
+  },
+  required: ["amount", "category", "note", "date", "type"],
+};
+
 export const parseTransactionWithGemini = async (input: string, existingCategories: string[]): Promise<ParsedTransactionData> => {
   const now = new Date();
   const categoriesList = existingCategories.join(', ');
   
+  // Optimized, concise instruction to reduce input tokens and processing time
   const systemInstruction = `
-    You are an intelligent financial assistant. Your job is to parse natural language text into a structured transaction object.
-    
-    Current Date: ${now.toISOString()}
-    Existing Categories: ${categoriesList}
+    Parse transaction to JSON.
+    Date: ${now.toISOString()}
+    Categories: ${categoriesList}
     
     Rules:
-    1. Extract amount, category, note, date, and transaction type.
-    2. CATEGORY MATCHING (Important): 
-       - First, try to fit the transaction into one of the 'Existing Categories' listed above if the meaning matches closely.
-       - If the transaction represents a CLEARLY different concept that doesn't fit any existing category, CREATE A NEW CATEGORY name.
-       - New category names should be short (1-2 words), Capitalized (e.g., "Pets", "Education", "Travel"), and in English.
-    3. If currency is not specified, assume local currency (extract number only).
-    4. If date is not specified, use Current Date.
-    5. Type: 'Income' for earnings (salary, bonus), 'Expense' for spending.
-    6. Keep 'note' concise.
+    1. Match existing category or create NEW (Short, Title Case).
+    2. No currency? Assume number is amount.
+    3. No date? Use Current Date.
+    4. Type: 'Expense' or 'Income'.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest', // Optimized for speed/latency
       contents: input,
       config: {
         systemInstruction: systemInstruction,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            amount: { type: Type.NUMBER, description: "The numeric value." },
-            category: { 
-              type: Type.STRING, 
-              description: "The category name. Use an existing one or create a new short name." 
-            },
-            note: { type: Type.STRING, description: "Short description." },
-            date: { type: Type.STRING, description: "ISO 8601 date string." },
-            type: { 
-              type: Type.STRING, 
-              enum: Object.values(TransactionType),
-              description: "Expense or Income." 
-            }
-          },
-          required: ["amount", "category", "note", "date", "type"],
-        }
+        maxOutputTokens: 300, // Limit output size to prevent latency spikes
+        responseSchema: COMMON_SCHEMA
       }
     });
 
@@ -71,5 +68,50 @@ export const parseTransactionWithGemini = async (input: string, existingCategori
   } catch (error) {
     console.error("Error parsing transaction with Gemini:", error);
     throw new Error("Failed to process your request. Please try again.");
+  }
+};
+
+export const parseImageTransactionWithGemini = async (base64Data: string, mimeType: string, existingCategories: string[]): Promise<ParsedTransactionData> => {
+  const now = new Date();
+  const categoriesList = existingCategories.join(', ');
+
+  const systemInstruction = `
+    Analyze the image (receipt, invoice, or object) and extract transaction details.
+    Current Date: ${now.toISOString()}
+    Existing Categories: ${categoriesList}
+
+    Rules:
+    1. Amount: Extract the TOTAL amount.
+    2. Note: Extract the Merchant Name (e.g., Starbucks, Walmart) or Item Name. Keep it short.
+    3. Category: Infer from the items/merchant. Use existing categories if they fit, otherwise create a concise Title Case one.
+    4. Date: Extract the date from the receipt. If missing, use Current Date.
+    5. Type: Usually 'Expense'. Only 'Income' if it looks like a payslip or deposit slip.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash', // Stronger model for Multimodal/OCR tasks
+      contents: {
+        parts: [
+          { inlineData: { data: base64Data, mimeType: mimeType } },
+          { text: "Analyze this receipt." }
+        ]
+      },
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: COMMON_SCHEMA
+      }
+    });
+
+    if (response.text) {
+      return JSON.parse(response.text) as ParsedTransactionData;
+    }
+    
+    throw new Error("No text returned from Gemini");
+
+  } catch (error) {
+    console.error("Error parsing image with Gemini:", error);
+    throw new Error("Failed to analyze image. Please try again.");
   }
 };
