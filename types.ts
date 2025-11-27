@@ -10,6 +10,7 @@ export interface Transaction {
   id: string;
   amount: number;
   category: TransactionCategory;
+  subcategory?: string; // Level 2 category
   note: string;
   date: string; // ISO string
   type: TransactionType;
@@ -24,6 +25,7 @@ export interface ExpenseSummary {
 export interface CategoryStyle {
   colorClass: string;
   isCustom: boolean;
-  // We don't store the icon component itself in state/storage, 
-  // we'll handle icons logic in the UI layer
 }
+
+// Key: Main Category, Value: List of Subcategories
+export type CategoryHierarchy = Record<string, string[]>;

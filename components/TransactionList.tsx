@@ -54,7 +54,14 @@ const TransactionList: React.FC = () => {
               
               <div className="flex-1">
                 <div className="flex justify-between items-start">
-                  <h4 className="font-semibold text-gray-900">{t.category}</h4>
+                  <h4 className="font-semibold text-gray-900">
+                    {t.category}
+                    {t.subcategory && (
+                      <span className="ml-2 font-normal text-sm text-gray-400">
+                        {t.subcategory}
+                      </span>
+                    )}
+                  </h4>
                   <span className={`font-bold ${t.type === TransactionType.Expense ? 'text-gray-900' : 'text-green-600'}`}>
                     {t.type === TransactionType.Expense ? '-' : '+'}${Math.abs(t.amount).toFixed(2)}
                   </span>

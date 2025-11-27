@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, TransactionType, ExpenseSummary, CategoryStyle } from '../types';
-import { DEFAULT_CATEGORIES, CUSTOM_CATEGORY_COLORS } from '../constants';
+import { Transaction, TransactionType, ExpenseSummary, CategoryStyle, CategoryHierarchy } from '../types';
+import { DEFAULT_CATEGORIES, CUSTOM_CATEGORY_COLORS, DEFAULT_HIERARCHY } from '../constants';
 
 interface ExpenseContextType {
   transactions: Transaction[];
@@ -18,6 +18,11 @@ interface ExpenseContextType {
   // Category Management
   categoryStyles: Record<string, CategoryStyle>;
   availableCategories: string[];
+  
+  // Hierarchy Management
+  categoryHierarchy: CategoryHierarchy;
+  registerSubcategory: (category: string, subcategory: string) => void;
+  deleteSubcategory: (category: string, subcategory: string) => void;
 }
 
 const ExpenseContext = createContext<ExpenseContextType | undefined>(undefined);
@@ -29,12 +34,16 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   // Manage categories and their styles
   const [categoryStyles, setCategoryStyles] = useState<Record<string, CategoryStyle>>(() => {
-    // Initialize with defaults
     const defaults: Record<string, CategoryStyle> = {};
     Object.entries(DEFAULT_CATEGORIES).forEach(([name, colorClass]) => {
       defaults[name] = { colorClass, isCustom: false };
     });
     return defaults;
+  });
+
+  // Manage Category Hierarchy (Level 1 -> Level 2[])
+  const [categoryHierarchy, setCategoryHierarchy] = useState<CategoryHierarchy>(() => {
+    return DEFAULT_HIERARCHY;
   });
 
   // Load data from local storage on mount
@@ -57,6 +66,16 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error("Failed to load categories", e);
       }
     }
+
+    const savedHierarchy = localStorage.getItem('categoryHierarchy');
+    if (savedHierarchy) {
+      try {
+        const parsed = JSON.parse(savedHierarchy);
+        setCategoryHierarchy(prev => ({ ...prev, ...parsed }));
+      } catch (e) {
+        console.error("Failed to load hierarchy", e);
+      }
+    }
   }, []);
 
   // Save to local storage
@@ -68,14 +87,15 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.setItem('categoryStyles', JSON.stringify(categoryStyles));
   }, [categoryStyles]);
 
-  const registerCategory = useCallback((categoryName: string) => {
-    setCategoryStyles(prev => {
-      // Direct check for exact match
-      if (prev[categoryName]) return prev;
+  useEffect(() => {
+    localStorage.setItem('categoryHierarchy', JSON.stringify(categoryHierarchy));
+  }, [categoryHierarchy]);
 
-      // Pick a random color for the new category
+  const registerCategory = useCallback((categoryName: string) => {
+    // 1. Register Style
+    setCategoryStyles(prev => {
+      if (prev[categoryName]) return prev;
       const randomColor = CUSTOM_CATEGORY_COLORS[Math.floor(Math.random() * CUSTOM_CATEGORY_COLORS.length)];
-      
       return {
         ...prev,
         [categoryName]: {
@@ -84,43 +104,88 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       };
     });
+
+    // 2. Register in Hierarchy (init empty array if new)
+    setCategoryHierarchy(prev => {
+      if (prev[categoryName]) return prev;
+      return { ...prev, [categoryName]: [] };
+    });
   }, []);
 
-  // Helper: Find existing category ignoring case, or format new one as Title Case
+  const registerSubcategory = useCallback((categoryName: string, subcategoryName: string) => {
+    if (!subcategoryName.trim()) return;
+    
+    setCategoryHierarchy(prev => {
+      const currentSubs = prev[categoryName] || [];
+      // Case-insensitive check
+      if (currentSubs.some(s => s.toLowerCase() === subcategoryName.toLowerCase())) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [categoryName]: [...currentSubs, subcategoryName]
+      };
+    });
+  }, []);
+
+  const deleteSubcategory = useCallback((categoryName: string, subcategoryName: string) => {
+    setCategoryHierarchy(prev => {
+      const currentSubs = prev[categoryName] || [];
+      return {
+        ...prev,
+        [categoryName]: currentSubs.filter(s => s !== subcategoryName)
+      };
+    });
+  }, []);
+
   const normalizeCategory = useCallback((name: string) => {
     const trimmed = name.trim();
-    if (!trimmed) return "Others";
-
-    // 1. Check if it matches an existing category (case-insensitive)
+    if (!trimmed) return "Uncategorized";
     const existingKey = Object.keys(categoryStyles).find(
       k => k.toLowerCase() === trimmed.toLowerCase()
     );
     if (existingKey) return existingKey;
-
-    // 2. If new, format as Title Case (e.g., "food" -> "Food")
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
   }, [categoryStyles]);
 
   const addTransaction = useCallback((transaction: Transaction) => {
-    // Normalize category before processing
     const cleanCategory = normalizeCategory(transaction.category);
-    const finalTransaction = { ...transaction, category: cleanCategory };
+    const cleanSubcategory = transaction.subcategory?.trim();
 
-    // Ensure category is registered (with the clean name)
+    // Ensure Main Category exists
     registerCategory(cleanCategory);
     
+    // Ensure Subcategory exists (if provided)
+    if (cleanSubcategory) {
+      registerSubcategory(cleanCategory, cleanSubcategory);
+    }
+    
+    const finalTransaction = { 
+      ...transaction, 
+      category: cleanCategory,
+      subcategory: cleanSubcategory // Keep the original case or normalize if needed
+    };
+
     setTransactions(prev => [finalTransaction, ...prev]);
-  }, [registerCategory, normalizeCategory]);
+  }, [registerCategory, registerSubcategory, normalizeCategory]);
 
   const updateTransaction = useCallback((updatedTransaction: Transaction) => {
-    // Normalize category before processing
     const cleanCategory = normalizeCategory(updatedTransaction.category);
-    const finalTransaction = { ...updatedTransaction, category: cleanCategory };
+    const cleanSubcategory = updatedTransaction.subcategory?.trim();
 
     registerCategory(cleanCategory);
+    if (cleanSubcategory) {
+      registerSubcategory(cleanCategory, cleanSubcategory);
+    }
+    
+    const finalTransaction = { 
+      ...updatedTransaction, 
+      category: cleanCategory,
+      subcategory: cleanSubcategory
+    };
     
     setTransactions(prev => prev.map(t => t.id === finalTransaction.id ? finalTransaction : t));
-  }, [registerCategory, normalizeCategory]);
+  }, [registerCategory, registerSubcategory, normalizeCategory]);
 
   const deleteTransaction = useCallback((id: string) => {
     setTransactions(prev => prev.filter(t => t.id !== id));
@@ -134,7 +199,6 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
-  // Filter transactions based on selected month
   const filteredTransactions = useMemo(() => {
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
@@ -175,7 +239,10 @@ export const ExpenseProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectedMonth,
       changeMonth,
       categoryStyles,
-      availableCategories
+      availableCategories,
+      categoryHierarchy,
+      registerSubcategory,
+      deleteSubcategory
     }}>
       {children}
     </ExpenseContext.Provider>

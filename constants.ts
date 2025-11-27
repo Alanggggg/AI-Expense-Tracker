@@ -19,11 +19,19 @@ export const DEFAULT_CATEGORIES: Record<string, string> = {
   'Entertainment': 'bg-pink-100 text-pink-600',
   'Housing': 'bg-teal-100 text-teal-600',
   'Health': 'bg-rose-100 text-rose-600',
-  'Others': 'bg-gray-100 text-gray-600',
+};
+
+// Default Subcategories for hierarchy
+export const DEFAULT_HIERARCHY: Record<string, string[]> = {
+  'Food': ['Groceries', 'Dining Out', 'Coffee', 'Snacks', 'Delivery'],
+  'Transport': ['Taxi', 'Bus', 'Subway', 'Fuel', 'Parking', 'Flight'],
+  'Shopping': ['Clothes', 'Electronics', 'Home', 'Beauty', 'Gifts'],
+  'Entertainment': ['Movies', 'Games', 'Sports', 'Streaming', 'Hobbies'],
+  'Housing': ['Rent', 'Utilities', 'Maintenance', 'Internet', 'Services'],
+  'Health': ['Doctor', 'Pharmacy', 'Gym', 'Therapy', 'Insurance'],
 };
 
 // Icon mapping for Default Categories
-// Custom categories will default to the Tag icon
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   'Food': Utensils,
   'Transport': Car,
@@ -31,7 +39,6 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   'Entertainment': Film,
   'Housing': Home,
   'Health': Heart,
-  'Others': MoreHorizontal,
 };
 
 export const DEFAULT_ICON = Tag;

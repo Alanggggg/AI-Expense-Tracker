@@ -5,6 +5,7 @@ import SummaryCard from './components/SummaryCard';
 import TransactionList from './components/TransactionList';
 import SmartInput from './components/SmartInput';
 import AnalyticsView from './components/AnalyticsView';
+import SettingsView from './components/SettingsView';
 import { Settings, PieChart } from 'lucide-react';
 
 // Simple container for the "Page" to limit width on desktop
@@ -20,9 +21,10 @@ const MobileContainer: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
 interface HeaderProps {
   onOpenAnalytics: () => void;
+  onOpenSettings: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenAnalytics }) => {
+const Header: React.FC<HeaderProps> = ({ onOpenAnalytics, onOpenSettings }) => {
   return (
     <header className="px-6 py-4 flex justify-between items-center bg-white shrink-0">
       <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
@@ -36,7 +38,11 @@ const Header: React.FC<HeaderProps> = ({ onOpenAnalytics }) => {
         >
           <PieChart size={24} />
         </button>
-        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-full transition-colors">
+        <button 
+          onClick={onOpenSettings}
+          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+          title="Settings"
+        >
           <Settings size={24} />
         </button>
       </div>
@@ -46,11 +52,15 @@ const Header: React.FC<HeaderProps> = ({ onOpenAnalytics }) => {
 
 const App: React.FC = () => {
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <ExpenseProvider>
       <MobileContainer>
-        <Header onOpenAnalytics={() => setShowAnalytics(true)} />
+        <Header 
+          onOpenAnalytics={() => setShowAnalytics(true)} 
+          onOpenSettings={() => setShowSettings(true)}
+        />
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <SummaryCard />
           <TransactionList />
@@ -59,10 +69,14 @@ const App: React.FC = () => {
         </div>
         <SmartInput />
         
-        {/* Full Screen Analytics Modal */}
+        {/* Full Screen Modals */}
         <AnalyticsView 
           isOpen={showAnalytics} 
           onClose={() => setShowAnalytics(false)} 
+        />
+        <SettingsView
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
         />
       </MobileContainer>
     </ExpenseProvider>
